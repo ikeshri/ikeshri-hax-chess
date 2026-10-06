@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Royal Chess Lounge</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // आपकी स्क्रीन से ऑटो-फिट किया हुआ असली Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBc5iPTXtYYkA0CEH0X7zL3YULPHAV1s9w",
+      authDomain: "chess-c9f3f.firebaseapp.com",
+      databaseURL: "https://chess-c9f3f-default-rtdb.firebaseio.com",
+      projectId: "chess-c9f3f",
+      storageBucket: "chess-c9f3f.firebasestorage.app",
+      messagingSenderId: "856565354627",
+      appId: "1:856565354627:web:80eeb09f6791de52e00bb6",
+      measurementId: "G-T212X5P66D"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // 0-लैग साउंड सिंथेसाइज़र (Web Audio API)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playMoveSound() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.07);
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.07);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.07);
+    }
+
+    const PIECES = {
+      p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚',
+      P: '♙', R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔'
+    };
+
+    const game = new Chess();
+    let selectedSquare = null;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let roomId = urlParams.get('room') || 'royal-love';
+    let playerColor = urlParams.get('color') || 'w';
+
+    const gameRef = ref(db, `rooms/${roomId}`);
+
+    const boardEl = document.getElementById('board');
+    const roleBadge = document.getElementById('roleBadge');
+    const turnStatus = document.getElementById('turnStatus');
+
+    roleBadge.innerText = playerColor === 'w' ? 'आप: White 👑' : 'आप: Black ⚔️';
+
+    function initBoard() {
+      boardEl.innerHTML = '';
+      const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+      const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+
+      const currentRanks = playerColor === 'b' ? [...ranks].reverse() : ranks;
+      const currentFiles = playerColor === 'b' ? [...files].reverse() : files;
+
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const sq = currentFiles[f] + currentRanks[r];
+          const isDark = (r + f) % 2 === 1;
+          const tile = document.createElement('div');
+          
+          tile.className = `relative flex items-center justify-center text-4xl sm:text-5xl font-bold cursor-pointer transition-colors duration-75 select-none ${
+            isDark ? 'bg-[#1b2838]' : 'bg-[#e2e8f0]'
+          }`;
+          tile.dataset.square = sq;
+          tile.onclick = () => handleSquareTap(sq);
+          boardEl.appendChild(tile);
+        }
+      }
+      render();
+    }
+
+    function render() {
+      const squares = boardEl.querySelectorAll('[data-square]');
+      squares.forEach(tile => {
+        const sq = tile.dataset.square;
+        const piece = game.get(sq);
+        
+        tile.innerText = piece ? (piece.color === 'w' ? PIECES[piece.type.toUpperCase()] : PIECES[piece.type]) : '';
+        tile.classList.remove('ring-4', 'ring-cyan-400', 'ring-inset');
+
+        if (piece) {
+          tile.style.color = piece.color === 'w' ? '#ffffff' : '#090d16';
+          tile.style.textShadow = piece.color === 'w' 
+            ? '0 0 10px rgba(56, 189, 248, 0.8), 0 2px 4px rgba(0,0,0,0.9)' 
+            : '0 0 8px rgba(244, 63, 94, 0.4)';
+        }
+
+        const dot = tile.querySelector('.target-dot');
+        if (dot) dot.remove();
+      });
+
+      updateStatusUI();
+    }
+
+    function handleSquareTap(sq) {
+      if (game.turn() !== playerColor) return;
+
+      if (!selectedSquare) {
+        const piece = game.get(sq);
+        if (piece && piece.color === playerColor) {
+          selectedSquare = sq;
+          highlightMoves(sq);
+        }
+      } else {
+        const move = game.move({ from: selectedSquare, to: sq, promotion: 'q' });
+        
+        if (move) {
+          playMoveSound();
+          const currentFen = game.fen();
+          selectedSquare = null;
+          render(); // इंस्टेंट लोकल अपडेट (0ms लैग)
+
+          // बैकग्राउंड सिंक
+          set(gameRef, {
+            fen: currentFen,
+            timestamp: Date.now()
+          });
+        } else {
+          const piece = game.get(sq);
+          if (piece && piece.color === playerColor) {
+            selectedSquare = sq;
+            highlightMoves(sq);
+          } else {
+            selectedSquare = null;
+            render();
+          }
+        }
+      }
+    }
+
+    function highlightMoves(sq) {
+      render();
+      const currentTile = boardEl.querySelector(`[data-square="${sq}"]`);
+      if (currentTile) currentTile.classList.add('ring-4', 'ring-cyan-400', 'ring-inset');
+
+      const moves = game.moves({ square: sq, verbose: true });
+      moves.forEach(m => {
+        const targetTile = boardEl.querySelector(`[data-square="${m.to}"]`);
+        if (targetTile) {
+          const dot = document.createElement('div');
+          dot.className = 'target-dot absolute w-3.5 h-3.5 bg-emerald-400 rounded-full shadow-lg shadow-emerald-400/80 pointer-events-none animate-pulse';
+          targetTile.appendChild(dot);
+        }
+      });
+    }
+
+    function updateStatusUI() {
+      if (game.in_checkmate()) {
+        turnStatus.innerText = "चेकमेट! खेल खत्म 🏆";
+        turnStatus.className = "text-rose-400 font-black animate-bounce";
+        return;
+      }
+      if (game.in_draw()) {
+        turnStatus.innerText = "मैच ड्रॉ!";
+        turnStatus.className = "text-slate-400 font-bold";
+        return;
+      }
+
+      if (game.turn() === playerColor) {
+        turnStatus.innerText = "आपकी चाल है!";
+        turnStatus.className = "text-emerald-400 font-black tracking-wide";
+      } else {
+        turnStatus.innerText = "पार्टनर की चाल का इंतज़ार...";
+        turnStatus.className = "text-amber-400 font-medium";
+      }
+    }
+
+    // सुपरफ़ास्ट रीयलटाइम डेटाबेस लिसनर
+    onValue(gameRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data && data.fen && data.fen !== game.fen()) {
+        game.load(data.fen);
+        playMoveSound();
+        render();
+      }
+    });
+
+    window.copyInvite = function() {
+      const partnerColor = playerColor === 'w' ? 'b' : 'w';
+      const baseUrl = window.location.origin + window.location.pathname;
+      const inviteUrl = `${baseUrl}?room=${roomId}&color=${partnerColor}`;
+      
+      navigator.clipboard.writeText(inviteUrl);
+      const btnText = document.getElementById('copyBtnText');
+      btnText.innerText = "लिंक कॉपी हो गया! अब DM करें 🚀";
+      setTimeout(() => btnText.innerText = "पार्टनर के लिए लिंक कॉपी करें", 2500);
+    };
+
+    initBoard();
+  </script>
+</head>
+<body class="bg-[#070b12] text-slate-100 min-h-screen flex flex-col justify-between items-center p-3 select-none overflow-hidden font-sans">
+
+  <div class="w-full max-w-[420px] flex items-center justify-between px-4 py-3 bg-[#0d1522]/90 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl mt-1">
+    <div class="flex flex-col">
+      <span id="roleBadge" class="text-xs uppercase tracking-wider text-cyan-400 font-bold">कनेक्ट हो रहा है...</span>
+      <span id="turnStatus" class="text-sm">तैयारी चल रही है...</span>
+    </div>
+    <div class="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/80 animate-ping"></div>
+  </div>
+
+  <div class="w-full max-w-[420px] aspect-square p-2.5 bg-gradient-to-br from-slate-900 to-black rounded-3xl border border-slate-800 shadow-[0_0_35px_rgba(0,0,0,0.8)] flex items-center justify-center">
+    <div id="board" class="w-full h-full grid grid-cols-8 grid-rows-8 rounded-2xl overflow-hidden border border-slate-700/60 shadow-inner">
+      <!-- 64 स्क्वेयर -->
+    </div>
+  </div>
+
+  <div class="w-full max-w-[420px] mb-2">
+    <button onclick="copyInvite()" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 active:scale-95 transition-all duration-150 rounded-2xl font-bold text-sm tracking-wide shadow-lg shadow-teal-500/25 flex items-center justify-center gap-2 text-slate-950">
+      <span id="copyBtnText">पार्टनर के लिए लिंक कॉपी करें</span>
+    </button>
+  </div>
+
+</body>
+</html>
