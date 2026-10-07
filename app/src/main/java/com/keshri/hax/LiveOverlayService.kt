@@ -100,7 +100,7 @@ class LiveOverlayService : Service() {
 
     private fun createFloatingUI() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        floatingView = LayoutInflater.from(this).inflate(R.layout.floating_hax_panel, null)
+       floatingView = LayoutInflater.from(this).inflate(R.layout.ikeshri_panel, null) 
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
