@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
             }
             Toast.makeText(this, "⚡ HAX ACTIVATED! Chess ऐप खोलो।", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "परमिशन कैंसिल कर दी गई!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "परमिशन रद्द की गई!", Toast.LENGTH_SHORT).show()
         }
     }
 
