@@ -21,12 +21,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : ComponentActivity() {
 
-    private var isLaunching: Boolean = false
-
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        isLaunching = false
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val serviceIntent = Intent(this, LiveOverlayService::class.java).apply {
                 putExtra("RESULT_CODE", result.resultCode)
@@ -110,7 +107,19 @@ class MainActivity : ComponentActivity() {
             background = btnBg
             setPadding(30, 24, 30, 24)
             elevation = 16f
-            setOnClickListener { handleLaunchClick() }
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
+                    Toast.makeText(this@MainActivity, "पहले 'Display over other apps' चालू करो!", Toast.LENGTH_LONG).show()
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                } else {
+                    val mpManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                    captureLauncher.launch(mpManager.createScreenCaptureIntent())
+                }
+            }
         }
 
         val btnStop = Button(this).apply {
@@ -183,23 +192,5 @@ class MainActivity : ComponentActivity() {
         root.addView(btnIg)
 
         setContentView(root)
-    }
-
-    private fun handleLaunchClick() {
-        if (isLaunching) return
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "पहले 'Display over other apps' चालू करो!", Toast.LENGTH_LONG).show()
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
-            return
-        }
-
-        isLaunching = true
-        val mpManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        captureLauncher.launch(mpManager.createScreenCaptureIntent())
     }
 }
