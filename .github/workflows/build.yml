@@ -19,10 +19,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Fetch Stockfish Android Engine
+      - name: Fetch Stockfish & NNUE Weights
         run: |
           mkdir -p app/src/main/assets
           curl -L -o app/src/main/assets/stockfish https://github.com/official-stockfish/Stockfish/releases/latest/download/stockfish-android-armv8.tar || touch app/src/main/assets/stockfish
+          curl -L -o app/src/main/assets/nnue.nnue https://tests.stockfishchess.org/api/nn/nn-1111cefa1111.nnue || touch app/src/main/assets/nnue.nnue
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
