@@ -21,9 +21,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : ComponentActivity() {
 
+    private var isLaunching: Boolean = false
+
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        isLaunching = false
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val serviceIntent = Intent(this, LiveOverlayService::class.java).apply {
                 putExtra("RESULT_CODE", result.resultCode)
@@ -34,16 +37,15 @@ class MainActivity : ComponentActivity() {
             } else {
                 startService(serviceIntent)
             }
-            Toast.makeText(this, "⚡ KESHRI HAX ACTIVATED! Chess kholo ab.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "⚡ HAX ACTIVATED! Chess ऐप खोलो।", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "Permission Cancel ho gayi!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "परमिशन कैंसिल कर दी गई!", Toast.LENGTH_SHORT).show()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Deep Space Cyberpunk Dark Background
         val bgGradient = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(Color.parseColor("#070A13"), Color.parseColor("#0D1322"), Color.parseColor("#050811"))
@@ -56,18 +58,17 @@ class MainActivity : ComponentActivity() {
             setPadding(40, 50, 40, 40)
         }
 
-        // 2. Neon Cyber Title
         val title = TextView(this).apply {
             text = "⚡ KESHRI HAX GM ⚡"
             textSize = 26f
-            setTextColor(Color.parseColor("#00FFA3")) // Neon Emerald Green
+            setTextColor(Color.parseColor("#00FFA3"))
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             gravity = Gravity.CENTER
             setShadowLayer(16f, 0f, 0f, Color.parseColor("#00FFA3"))
         }
 
         val subtitle = TextView(this).apply {
-            text = "AI-POWERED GRANDMASTER ENGINE • LEVEL 20"
+            text = "AI GRANDMASTER ENGINE • LEVEL 20"
             textSize = 10f
             setTextColor(Color.parseColor("#38BDF8"))
             typeface = Typeface.MONOSPACE
@@ -75,7 +76,6 @@ class MainActivity : ComponentActivity() {
             setPadding(0, 8, 0, 32)
         }
 
-        // 3. Status Glowing Card
         val statusCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val txtStatus = TextView(this).apply {
-            text = "● STOCKFISH ENGINE: READY\n● LIVE SCREEN EYE: ARMED\n● CALCULATION DEPTH: UNBEATABLE"
+            text = "● ENGINE: STOCKFISH GM ARMED\n● CALCULATION: 99.9% DEPTH\n● STATUS: READY TO LAUNCH"
             textSize = 11f
             setTextColor(Color.parseColor("#94A3B8"))
             typeface = Typeface.MONOSPACE
@@ -98,7 +98,6 @@ class MainActivity : ComponentActivity() {
         }
         statusCard.addView(txtStatus)
 
-        // 4. Main Launch Glowing Button
         val btnLaunch = Button(this).apply {
             text = "🚀 LAUNCH HAX OVERLAY"
             textSize = 15f
@@ -111,10 +110,9 @@ class MainActivity : ComponentActivity() {
             background = btnBg
             setPadding(30, 24, 30, 24)
             elevation = 16f
-            setOnClickListener { checkOverlayAndLaunch() }
+            setOnClickListener { handleLaunchClick() }
         }
 
-        // 5. Stop Button
         val btnStop = Button(this).apply {
             text = "STOP OVERLAY"
             textSize = 12f
@@ -129,11 +127,10 @@ class MainActivity : ComponentActivity() {
             setPadding(24, 16, 24, 16)
             setOnClickListener {
                 stopService(Intent(this@MainActivity, LiveOverlayService::class.java))
-                Toast.makeText(this@MainActivity, "Overlay Service Stopped", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Overlay बंद कर दिया गया", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // 6. Developer Section Header
         val devHeader = TextView(this).apply {
             text = "── DEVELOPER CONTACT ──"
             textSize = 11f
@@ -143,7 +140,6 @@ class MainActivity : ComponentActivity() {
             setPadding(0, 36, 0, 14)
         }
 
-        // 7. Telegram Button
         val btnTg = Button(this).apply {
             text = "✈️ Telegram: @ikeshri"
             textSize = 12f
@@ -159,7 +155,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 8. Instagram Button
         val btnIg = Button(this).apply {
             text = "📸 Instagram: @_ikeshri"
             textSize = 12f
@@ -175,7 +170,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // View Assembly
         root.addView(title)
         root.addView(subtitle)
         root.addView(statusCard)
@@ -191,9 +185,11 @@ class MainActivity : ComponentActivity() {
         setContentView(root)
     }
 
-    private fun checkOverlayAndLaunch() {
+    private fun handleLaunchClick() {
+        if (isLaunching) return
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Pehle 'Display over other apps' allow karo!", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "पहले 'Display over other apps' चालू करो!", Toast.LENGTH_LONG).show()
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
@@ -202,6 +198,7 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        isLaunching = true
         val mpManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         captureLauncher.launch(mpManager.createScreenCaptureIntent())
     }
