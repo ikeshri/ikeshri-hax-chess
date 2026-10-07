@@ -3,17 +3,21 @@ package com.keshri.hax
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.AudioManager
 import android.media.ImageReader
+import android.media.ToneGenerator
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.*
 import android.view.*
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
@@ -29,11 +33,32 @@ class LiveOverlayService : Service() {
 
     private var previousBoardHash: Int = 0
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
+    private var toneGenerator: ToneGenerator? = null
 
     override fun onCreate() {
         super.onCreate()
+        startNotification()
+        toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
         setupStockfish()
         createFloatingUI()
+    }
+
+    private fun startNotification() {
+        val channelId = "ikeshri_hax_live"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId, "ikeshri hax Overlay",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("ikeshri hax")
+            .setContentText("Chess GM Overlay is active")
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .build()
+        startForeground(1001, notification)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,22 +98,18 @@ class LiveOverlayService : Service() {
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
             try {
-                // 1. लाइव फ्रेम से बोर्ड का Hash चेक करना (Pixel Diffing)
                 val planes = image.planes
                 val buffer = planes[0].buffer
                 val currentHash = buffer.hashCode()
 
-                // अगर पिक्सेल बदले हैं मतलब चाल चली गई है
                 if (currentHash != previousBoardHash) {
                     previousBoardHash = currentHash
-
                     serviceScope.launch {
-                        // यहाँ बोर्ड से FEN एक्सट्रेक्ट होता है (डिफ़ॉल्ट FEN टेस्ट/फ्लो के लिए)
-                        val best = engine?.computeBestMove("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 300)
-
+                        val best = engine?.computeBestMove("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 500)
                         withContext(Dispatchers.Main) {
-                            txtStatus.text = "⚡ MOVE FOUND"
+                            txtStatus.text = "⚡ LIVE MOVE"
                             txtMove.text = best
+                            toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
                         }
                     }
                 }
@@ -100,46 +121,94 @@ class LiveOverlayService : Service() {
 
     private fun createFloatingUI() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-       floatingView = LayoutInflater.from(this).inflate(R.layout.ikeshri_panel, null) 
+        floatingView = LayoutInflater.from(this).inflate(R.layout.ikeshri_panel, null)
+
+        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else
+            WindowManager.LayoutParams.TYPE_PHONE
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
+            layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 80
-            y = 220
+            x = 30
+            y = 250
         }
 
         windowManager.addView(floatingView, params)
 
-        val btnSettings = floatingView.findViewById<TextView>(R.id.btnSettingsToggle)
-        val settingsLayout = floatingView.findViewById<LinearLayout>(R.id.settingsContainer)
+        val bubble = floatingView.findViewById<LinearLayout>(R.id.floatingBubble)
+        val panel = floatingView.findViewById<LinearLayout>(R.id.expandedPanel)
+        val btnClose = floatingView.findViewById<TextView>(R.id.btnClosePanel)
+        val tabEngine = floatingView.findViewById<TextView>(R.id.tabEngine)
+        val tabDev = floatingView.findViewById<TextView>(R.id.tabDev)
+        val viewEngine = floatingView.findViewById<LinearLayout>(R.id.viewEngine)
+        val viewDev = floatingView.findViewById<LinearLayout>(R.id.viewDev)
+        val btnTelegram = floatingView.findViewById<Button>(R.id.btnTelegram)
+        val btnInstagram = floatingView.findViewById<Button>(R.id.btnInstagram)
 
-        btnSettings.setOnClickListener {
-            settingsLayout.visibility = if (settingsLayout.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        bubble.setOnClickListener {
+            bubble.visibility = View.GONE
+            panel.visibility = View.VISIBLE
         }
 
-        // ड्रैग हैंडलर
-        floatingView.setOnTouchListener(object : View.OnTouchListener {
+        btnClose.setOnClickListener {
+            panel.visibility = View.GONE
+            bubble.visibility = View.VISIBLE
+        }
+
+        tabEngine.setOnClickListener {
+            viewEngine.visibility = View.VISIBLE
+            viewDev.visibility = View.GONE
+        }
+
+        tabDev.setOnClickListener {
+            viewEngine.visibility = View.GONE
+            viewDev.visibility = View.VISIBLE
+        }
+
+        btnTelegram.setOnClickListener {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/ikeshri")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
+
+        btnInstagram.setOnClickListener {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://instagram.com/_ikeshri")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
+
+        bubble.setOnTouchListener(object : View.OnTouchListener {
             var initX = 0; var initY = 0; var touchX = 0f; var touchY = 0f
+            var isDrag = false
+
             override fun onTouch(v: View?, e: MotionEvent): Boolean {
                 when (e.action) {
                     MotionEvent.ACTION_DOWN -> {
                         initX = params.x; initY = params.y
                         touchX = e.rawX; touchY = e.rawY
-                        return true
+                        isDrag = false
+                        return false
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        params.x = initX + (e.rawX - touchX).toInt()
-                        params.y = initY + (e.rawY - touchY).toInt()
+                        val dx = (e.rawX - touchX).toInt()
+                        val dy = (e.rawY - touchY).toInt()
+                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) isDrag = true
+                        params.x = initX + dx
+                        params.y = initY + dy
                         windowManager.updateViewLayout(floatingView, params)
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (!isDrag) v?.performClick()
                         return true
                     }
                 }
@@ -149,21 +218,32 @@ class LiveOverlayService : Service() {
     }
 
     private fun setupStockfish() {
-        val file = File(filesDir, "stockfish")
-        if (!file.exists()) {
+        val binFile = File(filesDir, "stockfish")
+        if (!binFile.exists()) {
             try {
                 assets.open("stockfish").use { input ->
-                    FileOutputStream(file).use { output -> input.copyTo(output) }
+                    FileOutputStream(binFile).use { output -> input.copyTo(output) }
                 }
-                file.setExecutable(true)
+                binFile.setExecutable(true)
             } catch (e: Exception) { e.printStackTrace() }
         }
-        engine = ChessEngine(file.absolutePath)
+
+        val nnueFile = File(filesDir, "nnue.nnue")
+        if (!nnueFile.exists()) {
+            try {
+                assets.open("nnue.nnue").use { input ->
+                    FileOutputStream(nnueFile).use { output -> input.copyTo(output) }
+                }
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+
+        engine = ChessEngine(binFile.absolutePath, nnueFile.absolutePath)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        toneGenerator?.release()
         virtualDisplay?.release()
         imageReader?.close()
         mediaProjection?.stop()
